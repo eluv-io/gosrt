@@ -41,6 +41,10 @@ type ConnRequest interface {
 	// Deprecated: replaced by Reject().
 	SetRejectionReason(r RejectionReason)
 
+	// SetConfig sets the configuration for the connection. Call before Accept(). Some options will not be honored, as
+	// they are socket level options that cannot be changed after the socket has been created.
+	SetConfig(config Config)
+
 	// Accept accepts the request and returns a connection.
 	Accept() (Conn, error)
 
@@ -93,10 +97,10 @@ func newConnRequest(ln *listener, p packet.Packet) *connRequest {
 		cif.Version = 5
 		cif.EncryptionField = 0 // Don't advertise any specific encryption method
 		cif.ExtensionField = 0x4A17
-		//cif.initialPacketSequenceNumber = newCircular(0, MAX_SEQUENCENUMBER)
-		//cif.maxTransmissionUnitSize = 0
-		//cif.maxFlowWindowSize = 0
-		//cif.SRTSocketId = 0
+		// cif.initialPacketSequenceNumber = newCircular(0, MAX_SEQUENCENUMBER)
+		// cif.maxTransmissionUnitSize = 0
+		// cif.maxFlowWindowSize = 0
+		// cif.SRTSocketId = 0
 		cif.SynCookie = ln.syncookie.Get(p.Header().Addr.String())
 
 		p.MarshalCIF(cif)
@@ -356,6 +360,14 @@ func (req *connRequest) generateSocketId() (uint32, error) {
 	}
 
 	return 0, fmt.Errorf("could not generate unused socketid")
+}
+
+func (req *connRequest) SetConfig(config Config) {
+	if config.Logger == nil {
+		// preserve the logger from the listener
+		config.Logger = req.config.Logger
+	}
+	req.config = config
 }
 
 func (req *connRequest) Accept() (Conn, error) {
