@@ -543,6 +543,9 @@ func (c *srtConn) getTimestamp() uint64 {
 
 // getTimestampOf returns the elapsed time between the given timestamp and the start of the connection in microseconds.
 func (c *srtConn) getTimestampOf(ts time.Time) uint64 {
+	if ts.Before(c.start) {
+		return 0
+	}
 	return uint64(ts.Sub(c.start).Microseconds())
 }
 
