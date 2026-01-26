@@ -506,13 +506,11 @@ func (c *srtConn) write(b []byte, ts time.Time) (int, error) {
 			p.Header().PktTsbpdTime = c.getTimestampOf(ts)
 		}
 
-		// Non-blocking write to the write queue
+		// blocking write to the write queue
 		select {
 		case <-c.ctx.Done():
 			return 0, io.EOF
 		case c.writeQueue <- p:
-		default:
-			return 0, io.EOF
 		}
 
 		if c.writeBuffer.Len() == 0 {
