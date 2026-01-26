@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/datarhei/gosrt/circular"
 	srtnet "github.com/datarhei/gosrt/net"
@@ -222,6 +223,10 @@ type PacketHeader struct {
 	Addr            net.Addr
 	IsControlPacket bool
 	PktTsbpdTime    uint64 // microseconds
+
+	// CustomTS is a custom timestamp that overrides PktTsbpdTime. If != zero, it overrides the wall-clock time normally
+	// used to calculate PktTsbpdTime when calling conneciton.WritePacket()
+	CustomTs time.Time
 
 	// control packet fields
 

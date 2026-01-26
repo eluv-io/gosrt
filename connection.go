@@ -470,7 +470,7 @@ func (c *srtConn) WritePacket(p packet.Packet) error {
 		return nil
 	}
 
-	_, err := c.Write(p.Data())
+	_, err := c.write(p.Data(), p.Header().CustomTs)
 	if err != nil {
 		return err
 	}
@@ -478,7 +478,13 @@ func (c *srtConn) WritePacket(p packet.Packet) error {
 	return nil
 }
 
+var zero time.Time
+
 func (c *srtConn) Write(b []byte) (int, error) {
+	return c.write(b, zero)
+}
+
+func (c *srtConn) write(b []byte, ts time.Time) (int, error) {
 	c.writeBuffer.Write(b)
 
 	for {
@@ -492,8 +498,13 @@ func (c *srtConn) Write(b []byte) (int, error) {
 		p.SetData(c.writeData[:n])
 
 		p.Header().IsControlPacket = false
+
 		// Give the packet a deliver timestamp
-		p.Header().PktTsbpdTime = c.getTimestamp()
+		if ts.IsZero() {
+			p.Header().PktTsbpdTime = c.getTimestamp()
+		} else {
+			p.Header().PktTsbpdTime = c.getTimestampOf(ts)
+		}
 
 		// Non-blocking write to the write queue
 		select {
@@ -527,7 +538,12 @@ func (c *srtConn) push(p packet.Packet) {
 
 // getTimestamp returns the elapsed time since the start of the connection in microseconds.
 func (c *srtConn) getTimestamp() uint64 {
-	return uint64(time.Since(c.start).Microseconds())
+	return c.getTimestampOf(time.Now())
+}
+
+// getTimestampOf returns the elapsed time between the given timestamp and the start of the connection in microseconds.
+func (c *srtConn) getTimestampOf(ts time.Time) uint64 {
+	return uint64(ts.Sub(c.start).Microseconds())
 }
 
 // getTimestampForPacket returns the elapsed time since the start of the connection in
@@ -684,7 +700,7 @@ func (c *srtConn) handlePacket(p packet.Packet) {
 
 	c.debug.expectedRcvPacketSequenceNumber = header.PacketSequenceNumber.Inc()
 
-	//fmt.Printf("%s\n", p.String())
+	// fmt.Printf("%s\n", p.String())
 
 	// Ignore FEC filter control packets
 	// https://github.com/Haivision/srt/blob/master/docs/features/packet-filtering-and-fec.md
