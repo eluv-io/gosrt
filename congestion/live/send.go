@@ -2,6 +2,7 @@ package live
 
 import (
 	"container/list"
+	"context"
 	"sync"
 	"time"
 
@@ -18,6 +19,7 @@ type SendConfig struct {
 	InputBW               int64
 	MinInputBW            int64
 	OverheadBW            int64
+	SendBufferSize        int // Maximum number of packets in send buffer (packetList + lossList)
 	OnDeliver             func(p packet.Packet)
 }
 
@@ -28,7 +30,9 @@ type sender struct {
 
 	packetList *list.List
 	lossList   *list.List
-	lock       sync.RWMutex
+	lock       sync.Mutex
+	spaceAvail chan struct{} // closed and recreated when buffer space frees up
+	maxBufSize int           // max packets in packetList + lossList
 
 	avgPayloadSize float64 // bytes
 	pktSndPeriod   float64 // microseconds
@@ -64,6 +68,7 @@ func NewSender(config SendConfig) congestion.Sender {
 		dropThreshold:      config.DropThreshold,
 		packetList:         list.New(),
 		lossList:           list.New(),
+		maxBufSize:         config.SendBufferSize,
 
 		avgPayloadSize: packet.MAX_PAYLOAD_SIZE, //  5.1.2. SRT's Default LiveCC Algorithm
 		maxBW:          float64(config.MaxBW),
@@ -72,6 +77,13 @@ func NewSender(config SendConfig) congestion.Sender {
 
 		deliver: config.OnDeliver,
 	}
+
+	// Default buffer size to 8192 packets (same as libsrt)
+	if s.maxBufSize <= 0 {
+		s.maxBufSize = 8192
+	}
+
+	s.spaceAvail = make(chan struct{})
 
 	if s.deliver == nil {
 		s.deliver = func(p packet.Packet) {}
@@ -117,13 +129,36 @@ func (s *sender) Flush() {
 	s.lossList = s.lossList.Init()
 }
 
-func (s *sender) Push(p packet.Packet) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
+// bufferSize returns the total number of packets in the send buffer (packetList + lossList).
+// Must be called with lock held.
+func (s *sender) bufferSize() int {
+	return s.packetList.Len() + s.lossList.Len()
+}
 
+func (s *sender) Push(p packet.Packet, ctx context.Context) error {
 	if p == nil {
-		return
+		return nil
 	}
+
+	// Block while buffer is full, checking context for cancellation
+	for {
+		s.lock.Lock()
+		if s.bufferSize() < s.maxBufSize {
+			break // Have space, continue with lock held
+		}
+		// Get current signal channel while holding lock
+		ch := s.spaceAvail
+		s.lock.Unlock()
+
+		// Wait for space to free up or context cancellation
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ch:
+			// Space may be available, loop and check again
+		}
+	}
+	// Lock is held here
 
 	// Give to the packet a sequence number
 	p.Header().PacketSequenceNumber = s.nextSequenceNumber
@@ -159,6 +194,9 @@ func (s *sender) Push(p packet.Packet) {
 	s.packetList.PushBack(p)
 
 	s.statistics.PktFlightSize = uint64(s.packetList.Len())
+
+	s.lock.Unlock()
+	return nil
 }
 
 func (s *sender) Tick(now uint64) {
@@ -212,6 +250,8 @@ func (s *sender) Tick(now uint64) {
 		}
 	}
 
+	freedSpace := len(removeList) > 0
+
 	// These packets are not needed anymore (too late)
 	for _, e := range removeList {
 		p := e.Value.(packet.Packet)
@@ -221,8 +261,14 @@ func (s *sender) Tick(now uint64) {
 
 		s.lossList.Remove(e)
 
-		// This packet has been ACK'd and we don't need it anymore
+		// This packet is dropped, we don't need it anymore
 		p.Decommission()
+	}
+
+	// Signal waiting Push() calls that space is available
+	if freedSpace {
+		close(s.spaceAvail)
+		s.spaceAvail = make(chan struct{})
 	}
 	s.lock.Unlock()
 
@@ -249,7 +295,6 @@ func (s *sender) Tick(now uint64) {
 
 func (s *sender) ACK(sequenceNumber circular.Number) {
 	s.lock.Lock()
-	defer s.lock.Unlock()
 
 	removeList := make([]*list.Element, 0, s.lossList.Len())
 	for e := s.lossList.Front(); e != nil; e = e.Next() {
@@ -261,6 +306,8 @@ func (s *sender) ACK(sequenceNumber circular.Number) {
 			break
 		}
 	}
+
+	freedSpace := len(removeList) > 0
 
 	// These packets are not needed anymore (ACK'd)
 	for _, e := range removeList {
@@ -276,6 +323,14 @@ func (s *sender) ACK(sequenceNumber circular.Number) {
 	}
 
 	s.pktSndPeriod = (s.avgPayloadSize + 16) * 1000000 / s.maxBW
+
+	// Signal waiting Push() calls that space is available
+	if freedSpace {
+		close(s.spaceAvail)
+		s.spaceAvail = make(chan struct{})
+	}
+
+	s.lock.Unlock()
 }
 
 func (s *sender) NAK(sequenceNumbers []circular.Number) {

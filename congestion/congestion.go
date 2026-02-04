@@ -2,6 +2,8 @@
 package congestion
 
 import (
+	"context"
+
 	"github.com/datarhei/gosrt/circular"
 	"github.com/datarhei/gosrt/packet"
 )
@@ -14,8 +16,10 @@ type Sender interface {
 	// Flush flushes all queued packages.
 	Flush()
 
-	// Push pushes a packet to be send on the sender queue.
-	Push(p packet.Packet)
+	// Push pushes a packet to be sent on the sender queue. It blocks if the
+	// send buffer is full until space becomes available or the context is cancelled.
+	// Returns an error if the context is cancelled while waiting.
+	Push(p packet.Packet, ctx context.Context) error
 
 	// Tick gets called from a connection in order to proceed with the queued packets. The provided value for
 	// now is corresponds to the timestamps in the queued packets. Those timestamps are the microseconds

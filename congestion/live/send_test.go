@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"net"
 	"testing"
 
@@ -31,7 +32,7 @@ func TestSendSequence(t *testing.T) {
 		p := packet.NewPacket(addr)
 		p.Header().PktTsbpdTime = uint64(i + 1)
 
-		send.Push(p)
+		send.Push(p, context.Background())
 	}
 
 	send.Tick(5)
@@ -52,7 +53,7 @@ func TestSendLossListACK(t *testing.T) {
 		p := packet.NewPacket(addr)
 		p.Header().PktTsbpdTime = uint64(i + 1)
 
-		send.Push(p)
+		send.Push(p, context.Background())
 	}
 
 	send.Tick(10)
@@ -81,7 +82,7 @@ func TestSendRetransmit(t *testing.T) {
 		p := packet.NewPacket(addr)
 		p.Header().PktTsbpdTime = uint64(i + 1)
 
-		send.Push(p)
+		send.Push(p, context.Background())
 	}
 
 	send.Tick(10)
@@ -112,7 +113,7 @@ func TestSendDrop(t *testing.T) {
 		p := packet.NewPacket(addr)
 		p.Header().PktTsbpdTime = uint64(i + 1)
 
-		send.Push(p)
+		send.Push(p, context.Background())
 	}
 
 	send.Tick(10)
@@ -133,7 +134,7 @@ func TestSendFlush(t *testing.T) {
 		p := packet.NewPacket(addr)
 		p.Header().PktTsbpdTime = uint64(i + 1)
 
-		send.Push(p)
+		send.Push(p, context.Background())
 	}
 
 	require.Exactly(t, 10, send.packetList.Len())

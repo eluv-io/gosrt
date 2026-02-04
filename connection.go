@@ -181,8 +181,7 @@ type srtConn struct {
 	// Queue for packets that are coming from the network
 	networkQueue chan packet.Packet
 
-	// Queue for packets that are written with writePacket() and will be send to the network
-	writeQueue  chan packet.Packet
+	// Buffer for assembling write data into packets
 	writeBuffer bytes.Buffer
 	writeData   []byte
 
@@ -281,7 +280,6 @@ func newSRTConn(config srtConnConfig) *srtConn {
 
 	c.networkQueue = make(chan packet.Packet, 16384)
 
-	c.writeQueue = make(chan packet.Packet, 16384)
 	if c.version == 4 {
 		// libsrt-1.2.3 receiver doesn't like it when the payload is larger than 7*188 bytes.
 		// Here we just take a multiple of a mpegts chunk size.
@@ -321,6 +319,9 @@ func newSRTConn(config srtConnConfig) *srtConn {
 	}
 	c.dropThreshold += 20_000
 
+	// Convert SendBufferSize from bytes to packets
+	sendBufPkts := int(c.config.SendBufferSize / c.config.PayloadSize)
+
 	c.snd = live.NewSender(live.SendConfig{
 		InitialSequenceNumber: c.initialPacketSequenceNumber,
 		DropThreshold:         c.dropThreshold,
@@ -328,13 +329,13 @@ func newSRTConn(config srtConnConfig) *srtConn {
 		InputBW:               c.config.InputBW,
 		MinInputBW:            c.config.MinInputBW,
 		OverheadBW:            c.config.OverheadBW,
+		SendBufferSize:        sendBufPkts,
 		OnDeliver:             c.pop,
 	})
 
 	c.ctx, c.cancelCtx = context.WithCancel(context.Background())
 
 	go c.networkQueueReader(c.ctx)
-	go c.writeQueueReader(c.ctx)
 	go c.ticker(c.ctx)
 
 	c.debug.expectedRcvPacketSequenceNumber = c.initialPacketSequenceNumber
@@ -506,11 +507,9 @@ func (c *srtConn) write(b []byte, ts time.Time) (int, error) {
 			p.Header().PktTsbpdTime = c.getTimestampOf(ts)
 		}
 
-		// blocking write to the write queue
-		select {
-		case <-c.ctx.Done():
+		// Push directly to congestion control (blocks if buffer is full)
+		if err := c.snd.Push(p, c.ctx); err != nil {
 			return 0, io.EOF
-		case c.writeQueue <- p:
 		}
 
 		if c.writeBuffer.Len() == 0 {
@@ -614,24 +613,6 @@ func (c *srtConn) networkQueueReader(ctx context.Context) {
 			return
 		case p := <-c.networkQueue:
 			c.handlePacket(p)
-		}
-	}
-}
-
-// writeQueueReader reads the packets from the write queue and puts them into congestion
-// control for sending.
-func (c *srtConn) writeQueueReader(ctx context.Context) {
-	defer func() {
-		c.log("connection:close", func() string { return "left write queue reader loop" })
-	}()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case p := <-c.writeQueue:
-			// Put the packet into the send congestion control
-			c.snd.Push(p)
 		}
 	}
 }
