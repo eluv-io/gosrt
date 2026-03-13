@@ -190,6 +190,7 @@ func Dial(network, address string, config Config) (Conn, error) {
 	// Wait for handshake to conclude
 	response := <-dl.connChan
 	if response.err != nil {
+		timer.Stop()
 		dl.Close()
 		return nil, response.err
 	}
