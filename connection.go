@@ -315,10 +315,7 @@ func newSRTConn(config srtConnConfig) *srtConn {
 
 	// 4.6.  Too-Late Packet Drop -> 125% of SRT latency, at least 1 second
 	// https://github.com/Haivision/srt/blob/master/docs/API/API-socket-options.md#SRTO_SNDDROPDELAY
-	c.dropThreshold = uint64(float64(c.peerTsbpdDelay)*1.25) + uint64(c.config.SendDropDelay.Microseconds())
-	if c.dropThreshold < uint64(time.Second.Microseconds()) {
-		c.dropThreshold = uint64(time.Second.Microseconds())
-	}
+	c.dropThreshold = max(uint64(float64(c.peerTsbpdDelay)*1.25)+uint64(c.config.SendDropDelay.Microseconds()), uint64(time.Second.Microseconds()))
 	c.dropThreshold += 20_000
 
 	c.snd = live.NewSender(live.SendConfig{
@@ -944,11 +941,7 @@ func (c *srtConn) handleHSRequest(p packet.Packet) {
 		return
 	}
 
-	recvTsbpdDelay := uint16(c.config.ReceiverLatency.Milliseconds())
-
-	if cif.SendTSBPDDelay > recvTsbpdDelay {
-		recvTsbpdDelay = cif.SendTSBPDDelay
-	}
+	recvTsbpdDelay := max(cif.SendTSBPDDelay, uint16(c.config.ReceiverLatency.Milliseconds()))
 
 	c.tsbpdDelay = uint64(recvTsbpdDelay) * 1000
 
@@ -1032,16 +1025,9 @@ func (c *srtConn) handleHSResponse(p packet.Packet) {
 			return
 		}
 
-		sendTsbpdDelay := uint16(c.config.PeerLatency.Milliseconds())
+		sendTsbpdDelay := max(cif.SendTSBPDDelay, uint16(c.config.PeerLatency.Milliseconds()))
 
-		if cif.SendTSBPDDelay > sendTsbpdDelay {
-			sendTsbpdDelay = cif.SendTSBPDDelay
-		}
-
-		c.dropThreshold = uint64(float64(sendTsbpdDelay)*1.25) + uint64(c.config.SendDropDelay.Microseconds())
-		if c.dropThreshold < uint64(time.Second.Microseconds()) {
-			c.dropThreshold = uint64(time.Second.Microseconds())
-		}
+		c.dropThreshold = max(uint64(float64(sendTsbpdDelay)*1.25)+uint64(c.config.SendDropDelay.Microseconds()), uint64(time.Second.Microseconds()))
 		c.dropThreshold += 20_000
 
 		c.snd.SetDropThreshold(c.dropThreshold)

@@ -373,7 +373,7 @@ func (req *connRequest) Reject(reason RejectionReason) {
 
 // generateSocketId generates an SRT SocketID that can be used for this connection
 func (req *connRequest) generateSocketId() (uint32, error) {
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		socketId, err := rand.Uint32()
 		if err != nil {
 			return 0, fmt.Errorf("could not generate random socket id")

@@ -40,7 +40,7 @@ func TestRecvSequence(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(i + 1)
@@ -82,7 +82,7 @@ func TestRecvTSBPD(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(i + 1)
@@ -122,7 +122,7 @@ func TestRecvNAK(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(i + 1)
@@ -174,7 +174,7 @@ func TestRecvPeriodicNAK(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(50 + i + 1)
@@ -232,7 +232,7 @@ func TestRecvACK(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(10 + i + 1)
@@ -331,7 +331,7 @@ func TestRecvDropTooLate(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(i + 1)
@@ -368,7 +368,7 @@ func TestRecvDropAlreadyACK(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(i + 1)
@@ -413,7 +413,7 @@ func TestRecvDropAlreadyRecvNoACK(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(i + 1)
@@ -431,7 +431,7 @@ func TestRecvDropAlreadyRecvNoACK(t *testing.T) {
 
 	recv.Tick(10) // ACK period
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(10+i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(20 + i + 1)
@@ -466,7 +466,7 @@ func TestRecvFlush(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(i + 1)
@@ -493,7 +493,7 @@ func TestRecvPeriodicACKLite(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(10 + i + 1)
@@ -523,7 +523,7 @@ func TestSkipTooLate(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(i + 1)

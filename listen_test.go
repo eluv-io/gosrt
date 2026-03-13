@@ -401,7 +401,7 @@ func TestListenAsync(t *testing.T) {
 	listenerWg.Add(parallelCount)
 	pendingWg.Add(parallelCount)
 	connectedWg.Add(parallelCount)
-	for i := 0; i < parallelCount; i++ {
+	for i := range parallelCount {
 		go func() {
 			defer listenerWg.Done()
 			for {
@@ -570,12 +570,8 @@ func TestListenParallelRequests(t *testing.T) {
 
 	var clientSideConnReady sync.WaitGroup
 
-	for i := 0; i < 4; i++ {
-		clientSideConnReady.Add(1)
-
-		go func() {
-			defer clientSideConnReady.Done()
-
+	for range 4 {
+		clientSideConnReady.Go(func() {
 			config := DefaultConfig()
 			config.StreamId = "foobar"
 
@@ -584,7 +580,7 @@ func TestListenParallelRequests(t *testing.T) {
 
 			err = conn.Close()
 			require.NoError(t, err)
-		}()
+		})
 	}
 
 	serverSideConnReady.Wait()
@@ -618,7 +614,7 @@ func TestListenDiscardRepeatedHandshakes(t *testing.T) {
 		}
 	}()
 
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		conn, err := net.Dial("udp", "127.0.0.1:6003")
 		require.NoError(t, err)
 		defer conn.Close()

@@ -576,7 +576,7 @@ func BenchmarkNoBufferpool(b *testing.B) {
 
 func BenchmarkBufferpool(b *testing.B) {
 	pool := sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return new(bytes.Buffer)
 		},
 	}

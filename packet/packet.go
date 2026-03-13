@@ -257,7 +257,7 @@ type pool struct {
 func newPool() *pool {
 	return &pool{
 		pool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return new(bytes.Buffer)
 			},
 		},
@@ -788,7 +788,7 @@ func (c *CIFHandshake) Marshal(w io.Writer) error {
 
 		missing := (4 - streamId.Len()%4)
 		if missing < 4 {
-			for i := 0; i < missing; i++ {
+			for range missing {
 				streamId.WriteByte(0)
 			}
 		}
@@ -815,7 +815,7 @@ func (c *CIFHandshake) Marshal(w io.Writer) error {
 
 		missing := (4 - congestion.Len()%4)
 		if missing < 4 {
-			for i := 0; i < missing; i++ {
+			for range missing {
 				congestion.WriteByte(0)
 			}
 		}

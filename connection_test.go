@@ -283,7 +283,7 @@ func TestEncryptionRetransmit(t *testing.T) {
 			originalOnSend(p)
 		}
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			n, err := conn.Write([]byte(message))
 			if !assert.NoError(t, err) {
 				panic(err.Error())
@@ -416,7 +416,7 @@ func TestEncryptionKeySwap(t *testing.T) {
 		}
 
 		// Send 150 messages
-		for i := 0; i < 150; i++ {
+		for range 150 {
 			n, err := conn.Write([]byte(message))
 			if !assert.NoError(t, err) {
 				panic(err.Error())
