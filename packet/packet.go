@@ -250,37 +250,13 @@ type PacketHeader struct {
 }
 
 type pkt struct {
-	header PacketHeader
-
-	payload *bytes.Buffer
+	header  PacketHeader
+	payload bytes.Buffer
 }
 
-type pool struct {
-	pool sync.Pool
+var pktPool = &sync.Pool{
+	New: func() interface{} { return new(pkt) },
 }
-
-func newPool() *pool {
-	return &pool{
-		pool: sync.Pool{
-			New: func() interface{} {
-				return new(bytes.Buffer)
-			},
-		},
-	}
-}
-
-func (p *pool) Get() *bytes.Buffer {
-	b := p.pool.Get().(*bytes.Buffer)
-	b.Reset()
-
-	return b
-}
-
-func (p *pool) Put(b *bytes.Buffer) {
-	p.pool.Put(b)
-}
-
-var payloadPool *pool = newPool()
 
 func NewPacketFromData(addr net.Addr, rawdata []byte) (Packet, error) {
 	p := NewPacket(addr)
@@ -296,28 +272,26 @@ func NewPacketFromData(addr net.Addr, rawdata []byte) (Packet, error) {
 }
 
 func NewPacket(addr net.Addr) Packet {
-	p := &pkt{
-		header: PacketHeader{
-			Addr:                  addr,
-			PacketSequenceNumber:  circular.New(0, MAX_SEQUENCENUMBER),
-			PacketPositionFlag:    SinglePacket,
-			OrderFlag:             false,
-			KeyBaseEncryptionFlag: UnencryptedPacket,
-			MessageNumber:         1,
-		},
-		payload: payloadPool.Get(),
+	p := pktPool.Get().(*pkt)
+	p.header = PacketHeader{
+		Addr:                  addr,
+		PacketSequenceNumber:  circular.New(0, MAX_SEQUENCENUMBER),
+		PacketPositionFlag:    SinglePacket,
+		OrderFlag:             false,
+		KeyBaseEncryptionFlag: UnencryptedPacket,
+		MessageNumber:         1,
 	}
-
+	p.payload.Reset()
 	return p
 }
 
 func (p *pkt) Decommission() {
-	if p.payload == nil {
-		return
+	if p.header.Addr == nil {
+		return // already decommissioned
 	}
-
-	payloadPool.Put(p.payload)
-	p.payload = nil
+	p.payload.Reset()
+	p.header = PacketHeader{} // zeros Addr, releases net.Addr / time.Time refs
+	pktPool.Put(p)
 }
 
 func (p pkt) String() string {
@@ -346,12 +320,11 @@ func (p pkt) String() string {
 }
 
 func (p *pkt) Clone() Packet {
-	clone := *p
-
-	clone.payload = payloadPool.Get()
+	clone := pktPool.Get().(*pkt)
+	clone.header = p.header
+	clone.payload.Reset()
 	clone.payload.Write(p.payload.Bytes())
-
-	return &clone
+	return clone
 }
 
 func (p *pkt) Header() *PacketHeader {
@@ -407,10 +380,6 @@ func (p *pkt) Marshal(w io.Writer) error {
 
 	var buffer [16]byte
 
-	if p.payload == nil {
-		return fmt.Errorf("invalid payload")
-	}
-
 	if p.header.IsControlPacket {
 		binary.BigEndian.PutUint16(buffer[0:], p.header.ControlType.Value()) // control type
 		binary.BigEndian.PutUint16(buffer[2:], p.header.SubType.Value())     // sub type
@@ -458,7 +427,7 @@ func (p *pkt) MarshalCIF(c CIF) {
 	}
 
 	p.payload.Reset()
-	c.Marshal(p.payload)
+	c.Marshal(&p.payload)
 }
 
 func (p *pkt) UnmarshalCIF(c CIF) error {
