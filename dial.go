@@ -190,6 +190,7 @@ func Dial(network, address string, config Config) (Conn, error) {
 	// Wait for handshake to conclude
 	response := <-dl.connChan
 	if response.err != nil {
+		timer.Stop()
 		dl.Close()
 		return nil, response.err
 	}
@@ -513,7 +514,7 @@ func (dl *dialer) handleHandshake(p packet.Packet) {
 			crypto:                      dl.crypto,
 			keyBaseEncryption:           packet.EvenKeyEncrypted,
 			onSend:                      dl.send,
-			onShutdown:                  func(socketId uint32) { dl.Close() },
+			onShutdown:                  func(*srtConn) { dl.Close() },
 			logger:                      dl.config.Logger,
 		})
 

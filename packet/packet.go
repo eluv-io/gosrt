@@ -207,7 +207,7 @@ type Packet interface {
 
 	// MarshalCIF writes the byte representation of a control information field as payload
 	// of the packet. Only for control packets.
-	MarshalCIF(c CIF)
+	MarshalCIF(c CIF) error
 
 	// UnmarshalCIF parses the payload into a control information field struct. Returns an error
 	// on failure.
@@ -421,13 +421,13 @@ func (p *pkt) Dump() string {
 	return p.String() + "\n" + hex.Dump(data.Bytes())
 }
 
-func (p *pkt) MarshalCIF(c CIF) {
+func (p *pkt) MarshalCIF(c CIF) error {
 	if !p.header.IsControlPacket {
-		return
+		return fmt.Errorf("packet is not a control packet")
 	}
 
 	p.payload.Reset()
-	c.Marshal(&p.payload)
+	return c.Marshal(&p.payload)
 }
 
 func (p *pkt) UnmarshalCIF(c CIF) error {
@@ -441,7 +441,7 @@ func (p *pkt) UnmarshalCIF(c CIF) error {
 // CIF reepresents a control information field
 type CIF interface {
 	// Marshal writes a byte representation of the CIF to the provided writer.
-	Marshal(w io.Writer)
+	Marshal(w io.Writer) error
 
 	// Unmarshal parses the provided bytes into the CIF. Returns a non nil error of failure.
 	Unmarshal(data []byte) error
@@ -673,12 +673,12 @@ func (c *CIFHandshake) Unmarshal(data []byte) error {
 	return nil
 }
 
-func (c *CIFHandshake) Marshal(w io.Writer) {
+func (c *CIFHandshake) Marshal(w io.Writer) error {
 	if w == nil {
-		return
+		return fmt.Errorf("invalid writer")
 	}
 
-	var buffer [128]byte
+	var buffer [48]byte
 
 	if len(c.StreamId) == 0 {
 		c.HasSID = false
@@ -762,7 +762,7 @@ func (c *CIFHandshake) Marshal(w io.Writer) {
 
 		missing := (4 - streamId.Len()%4)
 		if missing < 4 {
-			for i := 0; i < missing; i++ {
+			for range missing {
 				streamId.WriteByte(0)
 			}
 		}
@@ -789,7 +789,7 @@ func (c *CIFHandshake) Marshal(w io.Writer) {
 
 		missing := (4 - congestion.Len()%4)
 		if missing < 4 {
-			for i := 0; i < missing; i++ {
+			for range missing {
 				congestion.WriteByte(0)
 			}
 		}
@@ -810,6 +810,8 @@ func (c *CIFHandshake) Marshal(w io.Writer) {
 			w.Write(buffer[:4])
 		}
 	}
+
+	return nil
 }
 
 // 3.2.1.1.1.  Handshake Extension Message Flags
@@ -882,9 +884,9 @@ func (c *CIFHandshakeExtension) Unmarshal(data []byte) error {
 	return nil
 }
 
-func (c *CIFHandshakeExtension) Marshal(w io.Writer) {
+func (c *CIFHandshakeExtension) Marshal(w io.Writer) error {
 	if w == nil {
-		return
+		return fmt.Errorf("invalid writer")
 	}
 
 	var buffer [12]byte
@@ -928,7 +930,9 @@ func (c *CIFHandshakeExtension) Marshal(w io.Writer) {
 	binary.BigEndian.PutUint16(buffer[8:], c.RecvTSBPDDelay)
 	binary.BigEndian.PutUint16(buffer[10:], c.SendTSBPDDelay)
 
-	w.Write(buffer[:12])
+	_, err := w.Write(buffer[:12])
+
+	return err
 }
 
 // 3.2.2.  Key Material
@@ -1082,9 +1086,9 @@ func (c *CIFKeyMaterialExtension) Unmarshal(data []byte) error {
 	return nil
 }
 
-func (c *CIFKeyMaterialExtension) Marshal(w io.Writer) {
+func (c *CIFKeyMaterialExtension) Marshal(w io.Writer) error {
 	if w == nil {
-		return
+		return fmt.Errorf("invalid writer")
 	}
 
 	var buffer [128]byte
@@ -1125,7 +1129,9 @@ func (c *CIFKeyMaterialExtension) Marshal(w io.Writer) {
 	copy(buffer[offset:], c.Wrap)
 	offset += len(c.Wrap)
 
-	w.Write(buffer[:offset])
+	_, err := w.Write(buffer[:offset])
+
+	return err
 }
 
 // 3.2.4.  ACK (Acknowledgment)
@@ -1207,9 +1213,9 @@ func (c *CIFACK) Unmarshal(data []byte) error {
 	return nil
 }
 
-func (c *CIFACK) Marshal(w io.Writer) {
+func (c *CIFACK) Marshal(w io.Writer) error {
 	if w == nil {
-		return
+		return fmt.Errorf("invalid writer")
 	}
 
 	var buffer [28]byte
@@ -1229,6 +1235,8 @@ func (c *CIFACK) Marshal(w io.Writer) {
 	} else {
 		w.Write(buffer[0:])
 	}
+
+	return nil
 }
 
 // 3.2.5.  NAK (Loss Report)
@@ -1263,7 +1271,7 @@ func (c CIFNAK) String() string {
 
 func (c *CIFNAK) Unmarshal(data []byte) error {
 	if len(data)%4 != 0 {
-		return fmt.Errorf("data too short to unmarshal")
+		return fmt.Errorf("data has wrong length to unmarshal")
 	}
 
 	// Appendix A
@@ -1299,29 +1307,40 @@ func (c *CIFNAK) Unmarshal(data []byte) error {
 	return nil
 }
 
-func (c *CIFNAK) Marshal(w io.Writer) {
+func (c *CIFNAK) Marshal(w io.Writer) error {
 	if w == nil {
-		return
+		return fmt.Errorf("invalid writer")
 	}
 
 	if len(c.LostPacketSequenceNumber)%2 != 0 {
-		return
+		return fmt.Errorf("invalid length of lost packet sequence numbers")
 	}
 
 	// Appendix A
 
 	var buffer [8]byte
+	bytesWritten := 0
 
 	for i := 0; i < len(c.LostPacketSequenceNumber); i += 2 {
 		if c.LostPacketSequenceNumber[i] == c.LostPacketSequenceNumber[i+1] {
 			binary.BigEndian.PutUint32(buffer[0:], c.LostPacketSequenceNumber[i].Val())
 			w.Write(buffer[0:4])
+
+			bytesWritten += 4
 		} else {
 			binary.BigEndian.PutUint32(buffer[0:], c.LostPacketSequenceNumber[i].Val()|0b10000000_00000000_00000000_00000000)
 			binary.BigEndian.PutUint32(buffer[4:], c.LostPacketSequenceNumber[i+1].Val())
 			w.Write(buffer[0:])
+
+			bytesWritten += 8
+		}
+
+		if bytesWritten >= MAX_PAYLOAD_SIZE-4 {
+			break
 		}
 	}
+
+	return nil
 }
 
 //  3.2.7. Shutdown
@@ -1341,16 +1360,18 @@ func (c *CIFShutdown) Unmarshal(data []byte) error {
 	return nil
 }
 
-func (c *CIFShutdown) Marshal(w io.Writer) {
+func (c *CIFShutdown) Marshal(w io.Writer) error {
 	if w == nil {
-		return
+		return fmt.Errorf("invalid writer")
 	}
 
 	var buffer [4]byte
 
 	binary.BigEndian.PutUint32(buffer[0:], 0)
 
-	w.Write(buffer[0:])
+	_, err := w.Write(buffer[0:])
+
+	return err
 }
 
 //  3.1. Data Packets

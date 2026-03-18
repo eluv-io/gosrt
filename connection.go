@@ -193,7 +193,7 @@ type srtConn struct {
 	readBuffer bytes.Buffer
 
 	onSend     func(p packet.Packet)
-	onShutdown func(socketId uint32)
+	onShutdown func(*srtConn)
 
 	tick time.Duration
 
@@ -236,7 +236,7 @@ type srtConnConfig struct {
 	crypto                      crypto.Crypto
 	keyBaseEncryption           packet.PacketEncryption
 	onSend                      func(p packet.Packet)
-	onShutdown                  func(socketId uint32)
+	onShutdown                  func(*srtConn)
 	logger                      Logger
 }
 
@@ -266,7 +266,7 @@ func newSRTConn(config srtConnConfig) *srtConn {
 	}
 
 	if c.onShutdown == nil {
-		c.onShutdown = func(socketId uint32) {}
+		c.onShutdown = func(*srtConn) {}
 	}
 
 	c.nextACKNumber = circular.New(1, packet.MAX_TIMESTAMP)
@@ -317,10 +317,7 @@ func newSRTConn(config srtConnConfig) *srtConn {
 
 	// 4.6.  Too-Late Packet Drop -> 125% of SRT latency, at least 1 second
 	// https://github.com/Haivision/srt/blob/master/docs/API/API-socket-options.md#SRTO_SNDDROPDELAY
-	c.dropThreshold = uint64(float64(c.peerTsbpdDelay)*1.25) + uint64(c.config.SendDropDelay.Microseconds())
-	if c.dropThreshold < uint64(time.Second.Microseconds()) {
-		c.dropThreshold = uint64(time.Second.Microseconds())
-	}
+	c.dropThreshold = max(uint64(float64(c.peerTsbpdDelay)*1.25)+uint64(c.config.SendDropDelay.Microseconds()), uint64(time.Second.Microseconds()))
 	c.dropThreshold += 20_000
 
 	c.snd = live.NewSender(live.SendConfig{
@@ -980,11 +977,7 @@ func (c *srtConn) handleHSRequest(p packet.Packet) {
 		return
 	}
 
-	recvTsbpdDelay := uint16(c.config.ReceiverLatency.Milliseconds())
-
-	if cif.SendTSBPDDelay > recvTsbpdDelay {
-		recvTsbpdDelay = cif.SendTSBPDDelay
-	}
+	recvTsbpdDelay := max(cif.SendTSBPDDelay, uint16(c.config.ReceiverLatency.Milliseconds()))
 
 	c.tsbpdDelay = uint64(recvTsbpdDelay) * 1000
 
@@ -1068,16 +1061,9 @@ func (c *srtConn) handleHSResponse(p packet.Packet) {
 			return
 		}
 
-		sendTsbpdDelay := uint16(c.config.PeerLatency.Milliseconds())
+		sendTsbpdDelay := max(cif.SendTSBPDDelay, uint16(c.config.PeerLatency.Milliseconds()))
 
-		if cif.SendTSBPDDelay > sendTsbpdDelay {
-			sendTsbpdDelay = cif.SendTSBPDDelay
-		}
-
-		c.dropThreshold = uint64(float64(sendTsbpdDelay)*1.25) + uint64(c.config.SendDropDelay.Microseconds())
-		if c.dropThreshold < uint64(time.Second.Microseconds()) {
-			c.dropThreshold = uint64(time.Second.Microseconds())
-		}
+		c.dropThreshold = max(uint64(float64(sendTsbpdDelay)*1.25)+uint64(c.config.SendDropDelay.Microseconds()), uint64(time.Second.Microseconds()))
 		c.dropThreshold += 20_000
 
 		c.snd.SetDropThreshold(c.dropThreshold)
@@ -1237,7 +1223,7 @@ func (c *srtConn) sendShutdown() {
 }
 
 // sendNAK sends a NAK to the peer with the given range of sequence numbers.
-func (c *srtConn) sendNAK(from, to circular.Number) {
+func (c *srtConn) sendNAK(list []circular.Number) {
 	p := packet.NewPacket(c.remoteAddr)
 
 	p.Header().IsControlPacket = true
@@ -1247,8 +1233,7 @@ func (c *srtConn) sendNAK(from, to circular.Number) {
 
 	cif := packet.CIFNAK{}
 
-	cif.LostPacketSequenceNumber = append(cif.LostPacketSequenceNumber, from)
-	cif.LostPacketSequenceNumber = append(cif.LostPacketSequenceNumber, to)
+	cif.LostPacketSequenceNumber = append(cif.LostPacketSequenceNumber, list...)
 
 	p.MarshalCIF(&cif)
 
@@ -1452,7 +1437,7 @@ func (c *srtConn) close() {
 		c.log("connection:close", func() string { return "shutdown" })
 
 		go func() {
-			c.onShutdown(c.socketId)
+			c.onShutdown(c)
 		}()
 	})
 }

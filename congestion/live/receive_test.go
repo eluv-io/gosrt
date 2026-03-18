@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func mockLiveRecv(onSendACK func(seq circular.Number, light bool), onSendNAK func(from, to circular.Number), onDeliver func(p packet.Packet)) *receiver {
+func mockLiveRecv(onSendACK func(seq circular.Number, light bool), onSendNAK func(list []circular.Number), onDeliver func(p packet.Packet)) *receiver {
 	recv := NewReceiver(ReceiveConfig{
 		InitialSequenceNumber: circular.New(0, packet.MAX_SEQUENCENUMBER),
 		PeriodicACKInterval:   10,
@@ -30,7 +30,7 @@ func TestRecvSequence(t *testing.T) {
 		func(seq circular.Number, light bool) {
 			nACK++
 		},
-		func(from, to circular.Number) {
+		func(list []circular.Number) {
 			nNAK++
 		},
 		func(p packet.Packet) {
@@ -40,7 +40,7 @@ func TestRecvSequence(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(i + 1)
@@ -82,7 +82,7 @@ func TestRecvTSBPD(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(i + 1)
@@ -103,16 +103,17 @@ func TestRecvTSBPD(t *testing.T) {
 
 func TestRecvNAK(t *testing.T) {
 	seqACK := uint32(0)
-	seqNAKFrom := uint32(0)
-	seqNAKTo := uint32(0)
+	seqNAK := []uint32{}
 	numbers := []uint32{}
 	recv := mockLiveRecv(
 		func(seq circular.Number, light bool) {
 			seqACK = seq.Val()
 		},
-		func(from, to circular.Number) {
-			seqNAKFrom = from.Val()
-			seqNAKTo = to.Val()
+		func(list []circular.Number) {
+			seqNAK = []uint32{}
+			for _, sn := range list {
+				seqNAK = append(seqNAK, sn.Val())
+			}
 		},
 		func(p packet.Packet) {
 			numbers = append(numbers, p.Header().PacketSequenceNumber.Val())
@@ -121,7 +122,7 @@ func TestRecvNAK(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(i + 1)
@@ -130,8 +131,7 @@ func TestRecvNAK(t *testing.T) {
 	}
 
 	require.Equal(t, uint32(0), seqACK)
-	require.Equal(t, uint32(0), seqNAKFrom)
-	require.Equal(t, uint32(0), seqNAKTo)
+	require.Equal(t, []uint32{}, seqNAK)
 	require.Equal(t, uint32(4), recv.maxSeenSequenceNumber.Val())
 
 	for i := 7; i < 10; i++ {
@@ -143,30 +143,29 @@ func TestRecvNAK(t *testing.T) {
 	}
 
 	require.Equal(t, uint32(0), seqACK)
-	require.Equal(t, uint32(5), seqNAKFrom)
-	require.Equal(t, uint32(6), seqNAKTo)
+	require.Equal(t, []uint32{5, 6}, seqNAK)
 	require.Equal(t, uint32(9), recv.maxSeenSequenceNumber.Val())
 
 	recv.Tick(10) // ACK period
 
 	require.Equal(t, uint32(10), seqACK)
-	require.Equal(t, uint32(5), seqNAKFrom)
-	require.Equal(t, uint32(6), seqNAKTo)
+	require.Equal(t, []uint32{5, 6}, seqNAK)
 	require.Equal(t, uint32(9), recv.maxSeenSequenceNumber.Val())
 }
 
 func TestRecvPeriodicNAK(t *testing.T) {
 	seqACK := uint32(0)
-	seqNAKFrom := uint32(0)
-	seqNAKTo := uint32(0)
+	seqNAK := []uint32{}
 	numbers := []uint32{}
 	recv := mockLiveRecv(
 		func(seq circular.Number, light bool) {
 			seqACK = seq.Val()
 		},
-		func(from, to circular.Number) {
-			seqNAKFrom = from.Val()
-			seqNAKTo = to.Val()
+		func(list []circular.Number) {
+			seqNAK = []uint32{}
+			for _, sn := range list {
+				seqNAK = append(seqNAK, sn.Val())
+			}
 		},
 		func(p packet.Packet) {
 			numbers = append(numbers, p.Header().PacketSequenceNumber.Val())
@@ -175,7 +174,7 @@ func TestRecvPeriodicNAK(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(50 + i + 1)
@@ -184,8 +183,7 @@ func TestRecvPeriodicNAK(t *testing.T) {
 	}
 
 	require.Equal(t, uint32(0), seqACK)
-	require.Equal(t, uint32(0), seqNAKFrom)
-	require.Equal(t, uint32(0), seqNAKTo)
+	require.Equal(t, []uint32{}, seqNAK)
 	require.Equal(t, uint32(4), recv.maxSeenSequenceNumber.Val())
 
 	for i := 7; i < 10; i++ {
@@ -197,40 +195,35 @@ func TestRecvPeriodicNAK(t *testing.T) {
 	}
 
 	require.Equal(t, uint32(0), seqACK)
-	require.Equal(t, uint32(5), seqNAKFrom)
-	require.Equal(t, uint32(6), seqNAKTo)
+	require.Equal(t, []uint32{5, 6}, seqNAK)
 	require.Equal(t, uint32(9), recv.maxSeenSequenceNumber.Val())
 
 	recv.Tick(10) // ACK period
 
 	require.Equal(t, uint32(5), seqACK)
-	require.Equal(t, uint32(5), seqNAKFrom)
-	require.Equal(t, uint32(6), seqNAKTo)
+	require.Equal(t, []uint32{5, 6}, seqNAK)
 	require.Equal(t, uint32(9), recv.maxSeenSequenceNumber.Val())
-
-	seqNAKFrom = 0
-	seqNAKTo = 0
 
 	recv.Tick(20) // ACK period, NAK period
 
 	require.Equal(t, uint32(5), seqACK)
-	require.Equal(t, uint32(5), seqNAKFrom)
-	require.Equal(t, uint32(6), seqNAKTo)
+	require.Equal(t, []uint32{5, 6}, seqNAK)
 	require.Equal(t, uint32(9), recv.maxSeenSequenceNumber.Val())
 }
 
 func TestRecvACK(t *testing.T) {
 	seqACK := uint32(0)
-	seqNAKFrom := uint32(0)
-	seqNAKTo := uint32(0)
+	seqNAK := []uint32{}
 	numbers := []uint32{}
 	recv := mockLiveRecv(
 		func(seq circular.Number, light bool) {
 			seqACK = seq.Val()
 		},
-		func(from, to circular.Number) {
-			seqNAKFrom = from.Val()
-			seqNAKTo = to.Val()
+		func(list []circular.Number) {
+			seqNAK = []uint32{}
+			for _, sn := range list {
+				seqNAK = append(seqNAK, sn.Val())
+			}
 		},
 		func(p packet.Packet) {
 			numbers = append(numbers, p.Header().PacketSequenceNumber.Val())
@@ -239,7 +232,7 @@ func TestRecvACK(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(10 + i + 1)
@@ -248,8 +241,7 @@ func TestRecvACK(t *testing.T) {
 	}
 
 	require.Equal(t, uint32(0), seqACK)
-	require.Equal(t, uint32(0), seqNAKFrom)
-	require.Equal(t, uint32(0), seqNAKTo)
+	require.Equal(t, []uint32{}, seqNAK)
 	require.Equal(t, uint32(4), recv.maxSeenSequenceNumber.Val())
 	require.Equal(t, uint32(0), recv.lastACKSequenceNumber.Inc().Val())
 	require.Equal(t, uint32(0), recv.lastDeliveredSequenceNumber.Inc().Val())
@@ -264,9 +256,23 @@ func TestRecvACK(t *testing.T) {
 	}
 
 	require.Equal(t, uint32(0), seqACK)
-	require.Equal(t, uint32(5), seqNAKFrom)
-	require.Equal(t, uint32(6), seqNAKTo)
+	require.Equal(t, []uint32{5, 6}, seqNAK)
 	require.Equal(t, uint32(9), recv.maxSeenSequenceNumber.Val())
+	require.Equal(t, uint32(0), recv.lastACKSequenceNumber.Inc().Val())
+	require.Equal(t, uint32(0), recv.lastDeliveredSequenceNumber.Inc().Val())
+	require.Exactly(t, []uint32{}, numbers)
+
+	for i := 15; i < 20; i++ {
+		p := packet.NewPacket(addr)
+		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
+		p.Header().PktTsbpdTime = uint64(30 + i + 1)
+
+		recv.Push(p)
+	}
+
+	require.Equal(t, uint32(0), seqACK)
+	require.Equal(t, []uint32{10, 14}, seqNAK)
+	require.Equal(t, uint32(19), recv.maxSeenSequenceNumber.Val())
 	require.Equal(t, uint32(0), recv.lastACKSequenceNumber.Inc().Val())
 	require.Equal(t, uint32(0), recv.lastDeliveredSequenceNumber.Inc().Val())
 	require.Exactly(t, []uint32{}, numbers)
@@ -274,9 +280,8 @@ func TestRecvACK(t *testing.T) {
 	recv.Tick(10)
 
 	require.Equal(t, uint32(5), seqACK)
-	require.Equal(t, uint32(5), seqNAKFrom)
-	require.Equal(t, uint32(6), seqNAKTo)
-	require.Equal(t, uint32(9), recv.maxSeenSequenceNumber.Val())
+	require.Equal(t, []uint32{10, 14}, seqNAK)
+	require.Equal(t, uint32(19), recv.maxSeenSequenceNumber.Val())
 	require.Equal(t, uint32(5), recv.lastACKSequenceNumber.Inc().Val())
 	require.Equal(t, uint32(0), recv.lastDeliveredSequenceNumber.Inc().Val())
 	require.Exactly(t, []uint32{}, numbers)
@@ -284,9 +289,8 @@ func TestRecvACK(t *testing.T) {
 	recv.Tick(20)
 
 	require.Equal(t, uint32(5), seqACK)
-	require.Equal(t, uint32(5), seqNAKFrom)
-	require.Equal(t, uint32(6), seqNAKTo)
-	require.Equal(t, uint32(9), recv.maxSeenSequenceNumber.Val())
+	require.Equal(t, []uint32{5, 6, 10, 14}, seqNAK)
+	require.Equal(t, uint32(19), recv.maxSeenSequenceNumber.Val())
 	require.Equal(t, uint32(5), recv.lastACKSequenceNumber.Inc().Val())
 	require.Equal(t, uint32(5), recv.lastDeliveredSequenceNumber.Inc().Val())
 	require.Exactly(t, []uint32{0, 1, 2, 3, 4}, numbers)
@@ -294,9 +298,8 @@ func TestRecvACK(t *testing.T) {
 	recv.Tick(30)
 
 	require.Equal(t, uint32(5), seqACK)
-	require.Equal(t, uint32(5), seqNAKFrom)
-	require.Equal(t, uint32(6), seqNAKTo)
-	require.Equal(t, uint32(9), recv.maxSeenSequenceNumber.Val())
+	require.Equal(t, []uint32{5, 6, 10, 14}, seqNAK)
+	require.Equal(t, uint32(19), recv.maxSeenSequenceNumber.Val())
 	require.Equal(t, uint32(5), recv.lastACKSequenceNumber.Inc().Val())
 	require.Equal(t, uint32(5), recv.lastDeliveredSequenceNumber.Inc().Val())
 	require.Exactly(t, []uint32{0, 1, 2, 3, 4}, numbers)
@@ -312,9 +315,8 @@ func TestRecvACK(t *testing.T) {
 	recv.Tick(40)
 
 	require.Equal(t, uint32(10), seqACK)
-	require.Equal(t, uint32(5), seqNAKFrom)
-	require.Equal(t, uint32(6), seqNAKTo)
-	require.Equal(t, uint32(9), recv.maxSeenSequenceNumber.Val())
+	require.Equal(t, []uint32{10, 14}, seqNAK)
+	require.Equal(t, uint32(19), recv.maxSeenSequenceNumber.Val())
 	require.Equal(t, uint32(10), recv.lastACKSequenceNumber.Inc().Val())
 	require.Equal(t, uint32(10), recv.lastDeliveredSequenceNumber.Inc().Val())
 	require.Exactly(t, []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, numbers)
@@ -329,7 +331,7 @@ func TestRecvDropTooLate(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(i + 1)
@@ -366,7 +368,7 @@ func TestRecvDropAlreadyACK(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(i + 1)
@@ -411,7 +413,7 @@ func TestRecvDropAlreadyRecvNoACK(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(i + 1)
@@ -429,7 +431,7 @@ func TestRecvDropAlreadyRecvNoACK(t *testing.T) {
 
 	recv.Tick(10) // ACK period
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(10+i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(20 + i + 1)
@@ -464,7 +466,7 @@ func TestRecvFlush(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(i + 1)
@@ -491,7 +493,7 @@ func TestRecvPeriodicACKLite(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(10 + i + 1)
@@ -521,7 +523,7 @@ func TestSkipTooLate(t *testing.T) {
 
 	addr, _ := net.ResolveIPAddr("ip", "127.0.0.1")
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		p := packet.NewPacket(addr)
 		p.Header().PacketSequenceNumber = circular.New(uint32(i), packet.MAX_SEQUENCENUMBER)
 		p.Header().PktTsbpdTime = uint64(i + 1)
@@ -556,8 +558,8 @@ func TestIssue67(t *testing.T) {
 		func(seq circular.Number, light bool) {
 			ackNumbers = append(ackNumbers, seq.Val())
 		},
-		func(from, to circular.Number) {
-			nakNumbers = append(nakNumbers, [2]uint32{from.Val(), to.Val()})
+		func(list []circular.Number) {
+			nakNumbers = append(nakNumbers, [2]uint32{list[0].Val(), list[1].Val()})
 		},
 		func(p packet.Packet) {
 			numbers = append(numbers, p.Header().PacketSequenceNumber.Val())
