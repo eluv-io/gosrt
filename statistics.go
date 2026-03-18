@@ -48,6 +48,9 @@ type StatisticsAccumulated struct {
 	ByteSendDrop      uint64 `json:"byte_send_drop"`      // Same as pktSendDrop, but expressed in bytes, including payload and all the headers (IP, TCP, SRT)
 	ByteRecvDrop      uint64 `json:"byte_recv_drop"`      // Same as pktRecvDrop, but expressed in bytes, including payload and all the headers (IP, TCP, SRT)
 	ByteRecvUndecrypt uint64 `json:"byte_recv_undecrypt"` // Same as pktRecvUndecrypt, but expressed in bytes, including payload and all the headers (IP, TCP, SRT)
+
+	TickerOverslept   uint64 `json:"ticker_overslept"`    // The number of times the SRT connection's internal ticker has overslept, i.e. the time when the next packet should have been sent has already passed at the moment when the sender is notified about the tick.
+	MsTickerOverslept uint64 `json:"ms_ticker_overslept"` // The accumulated time in milliseconds the SRT connection's internal ticker has overslept.
 }
 
 type StatisticsInterval struct {
@@ -88,6 +91,9 @@ type StatisticsInterval struct {
 	ByteSendDrop      uint64 `json:"byte_send_drop"`      // Same as pktSendDrop, but expressed in bytes, including payload and all the headers (IP, TCP, SRT)
 	ByteRecvDrop      uint64 `json:"byte_recv_drop"`      // Same as pktRecvDrop, but expressed in bytes, including payload and all the headers (IP, TCP, SRT)
 	ByteRecvUndecrypt uint64 `json:"byte_recv_undecrypt"` // Same as pktRecvUndecrypt, but expressed in bytes, including payload and all the headers (IP, TCP, SRT)
+
+	TickerOverslept   uint64 `json:"ticker_overslept"`    // The number of times the SRT connection's internal ticker has overslept, i.e. the time when the next packet should have been sent has already passed at the moment when the sender is notified about the tick.
+	MsTickerOverslept uint64 `json:"ms_ticker_overslept"` // The accumulated time in milliseconds the SRT connection's internal ticker has overslept.
 }
 
 type StatisticsInstantaneous struct {

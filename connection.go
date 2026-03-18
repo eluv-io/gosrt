@@ -132,6 +132,8 @@ type connStats struct {
 	pktSentShutdown   uint64
 	pktRecvShutdown   uint64
 	mbpsLinkCapacity  float64
+	tickerOverslept   uint64
+	msTickerOverslept uint64
 }
 
 // Check if we implement the net.Conn interface
@@ -399,6 +401,9 @@ func (c *srtConn) Version() uint32 {
 // ticker invokes the congestion control in regular intervals with
 // the current connection time.
 func (c *srtConn) ticker(ctx context.Context) {
+	tickThreshold := c.tick * 3 / 2 // ticker precision for detecting ticker oversleeps
+	lastTick := time.Time{}
+
 	ticker := time.NewTicker(c.tick)
 	defer ticker.Stop()
 	defer func() {
@@ -410,6 +415,20 @@ func (c *srtConn) ticker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case t := <-ticker.C:
+			if !lastTick.IsZero() {
+				diff := t.Sub(lastTick)
+				if diff > tickThreshold {
+					// note: this notifies the over-sleep one tick after it actually happens, but it is sufficient for
+					// debugging purposes and avoids the need for an additional time.Now() call
+					c.log("connection:warn", func() string { return fmt.Sprintf("ticker oversleep %d ms", diff.Milliseconds()) })
+					c.statisticsLock.Lock()
+					c.statistics.tickerOverslept++
+					c.statistics.msTickerOverslept += uint64(diff.Milliseconds())
+					c.statisticsLock.Unlock()
+				}
+			}
+			lastTick = t
+
 			tickTime := uint64(t.Sub(c.start).Microseconds())
 
 			c.recv.Tick(c.tsbpdTimeBase + tickTime)
@@ -1492,6 +1511,8 @@ func (c *srtConn) Stats(s *Statistics) {
 		ByteSendDrop:      send.ByteDrop + (send.PktDrop * c.statistics.headerSize),
 		ByteRecvDrop:      recv.ByteDrop + (recv.PktDrop * c.statistics.headerSize),
 		ByteRecvUndecrypt: c.statistics.byteRecvUndecrypt + (c.statistics.pktRecvUndecrypt * c.statistics.headerSize),
+		TickerOverslept:   c.statistics.tickerOverslept,
+		MsTickerOverslept: c.statistics.msTickerOverslept,
 	}
 
 	// Interval
@@ -1528,6 +1549,8 @@ func (c *srtConn) Stats(s *Statistics) {
 		ByteSendDrop:       s.Accumulated.ByteSendDrop - previous.ByteSendDrop,
 		ByteRecvDrop:       s.Accumulated.ByteRecvDrop - previous.ByteRecvDrop,
 		ByteRecvUndecrypt:  s.Accumulated.ByteRecvUndecrypt - previous.ByteRecvUndecrypt,
+		TickerOverslept:    s.Accumulated.TickerOverslept - previous.TickerOverslept,
+		MsTickerOverslept:  s.Accumulated.MsTickerOverslept - previous.MsTickerOverslept,
 	}
 
 	// Instantaneous
