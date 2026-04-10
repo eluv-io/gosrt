@@ -611,7 +611,9 @@ func (c *srtConn) pop(p packet.Packet) {
 		}
 		c.cryptoLock.Unlock()
 
-		c.log("data:send:dump", func() string { return p.Dump() })
+		if c.logEnabled("data:send:dump") {
+			c.log("data:send:dump", func() string { return p.Dump() })
+		}
 	}
 
 	// Send the packet on the wire
@@ -752,7 +754,9 @@ func (c *srtConn) handlePacket(p packet.Packet) {
 
 	header.PktTsbpdTime = c.tsbpdTimeBase + tsbpdTimeBaseOffset + uint64(header.Timestamp) + c.tsbpdDelay + c.tsbpdDrift
 
-	c.log("data:recv:dump", func() string { return p.Dump() })
+	if c.logEnabled("data:recv:dump") {
+		c.log("data:recv:dump", func() string { return p.Dump() })
+	}
 
 	c.cryptoLock.Lock()
 	if c.crypto != nil {
@@ -778,7 +782,9 @@ func (c *srtConn) handlePacket(p packet.Packet) {
 
 // handleKeepAlive resets the idle timeout and sends a keepalive to the peer.
 func (c *srtConn) handleKeepAlive(p packet.Packet) {
-	c.log("control:recv:keepalive:dump", func() string { return p.Dump() })
+	if c.logEnabled("control:recv:keepalive:dump") {
+		c.log("control:recv:keepalive:dump", func() string { return p.Dump() })
+	}
 
 	c.statisticsLock.Lock()
 	c.statistics.pktRecvKeepalive++
@@ -787,7 +793,9 @@ func (c *srtConn) handleKeepAlive(p packet.Packet) {
 
 	c.peerIdleTimeout.Reset(c.config.PeerIdleTimeout)
 
-	c.log("control:send:keepalive:dump", func() string { return p.Dump() })
+	if c.logEnabled("control:send:keepalive:dump") {
+		c.log("control:send:keepalive:dump", func() string { return p.Dump() })
+	}
 
 	c.pop(p)
 }
@@ -806,7 +814,9 @@ func (c *srtConn) handleShutdown(p packet.Packet) {
 // handleACK forwards the acknowledge sequence number to the congestion control and
 // returns a ACKACK (on a full ACK). The RTT is also updated in case of a full ACK.
 func (c *srtConn) handleACK(p packet.Packet) {
-	c.log("control:recv:ACK:dump", func() string { return p.Dump() })
+	if c.logEnabled("control:recv:ACK:dump") {
+		c.log("control:recv:ACK:dump", func() string { return p.Dump() })
+	}
 
 	c.statisticsLock.Lock()
 	c.statistics.pktRecvACK++
@@ -822,7 +832,9 @@ func (c *srtConn) handleACK(p packet.Packet) {
 		return
 	}
 
-	c.log("control:recv:ACK:cif", func() string { return cif.String() })
+	if c.logEnabled("control:recv:ACK:cif") {
+		c.log("control:recv:ACK:cif", func() string { return cif.String() })
+	}
 
 	c.snd.ACK(cif.LastACKPacketSequenceNumber)
 
@@ -841,7 +853,9 @@ func (c *srtConn) handleACK(p packet.Packet) {
 
 // handleNAK forwards the lost sequence number to the congestion control.
 func (c *srtConn) handleNAK(p packet.Packet) {
-	c.log("control:recv:NAK:dump", func() string { return p.Dump() })
+	if c.logEnabled("control:recv:NAK:dump") {
+		c.log("control:recv:NAK:dump", func() string { return p.Dump() })
+	}
 
 	c.statisticsLock.Lock()
 	c.statistics.pktRecvNAK++
@@ -857,7 +871,9 @@ func (c *srtConn) handleNAK(p packet.Packet) {
 		return
 	}
 
-	c.log("control:recv:NAK:cif", func() string { return cif.String() })
+	if c.logEnabled("control:recv:NAK:cif") {
+		c.log("control:recv:NAK:cif", func() string { return cif.String() })
+	}
 
 	// Inform congestion control about lost packets
 	c.snd.NAK(cif.LostPacketSequenceNumber)
@@ -871,7 +887,9 @@ func (c *srtConn) handleACKACK(p packet.Packet) {
 	c.statistics.pktRecvACKACK++
 	c.statisticsLock.Unlock()
 
-	c.log("control:recv:ACKACK:dump", func() string { return p.Dump() })
+	if c.logEnabled("control:recv:ACKACK:dump") {
+		c.log("control:recv:ACKACK:dump", func() string { return p.Dump() })
+	}
 
 	// p.typeSpecific is the ACKNumber
 	if ts, ok := c.ackNumbers[p.Header().TypeSpecific]; ok {
@@ -900,9 +918,11 @@ func (c *srtConn) handleACKACK(p packet.Packet) {
 func (c *srtConn) recalculateRTT(rtt time.Duration) {
 	c.rtt.Recalculate(rtt)
 
-	c.log("connection:rtt", func() string {
-		return fmt.Sprintf("RTT=%.0fus RTTVar=%.0fus NAKInterval=%.0fms", c.rtt.RTT(), c.rtt.RTTVar(), c.rtt.NAKInterval()/1000)
-	})
+	if c.logEnabled("connection:rtt") {
+		c.log("connection:rtt", func() string {
+			return fmt.Sprintf("RTT=%.0fus RTTVar=%.0fus NAKInterval=%.0fms", c.rtt.RTT(), c.rtt.RTTVar(), c.rtt.NAKInterval()/1000)
+		})
+	}
 }
 
 // handleHSRequest handles the HSv4 handshake extension request and sends the response
@@ -1237,8 +1257,12 @@ func (c *srtConn) sendNAK(list []circular.Number) {
 
 	p.MarshalCIF(&cif)
 
-	c.log("control:send:NAK:dump", func() string { return p.Dump() })
-	c.log("control:send:NAK:cif", func() string { return cif.String() })
+	if c.logEnabled("control:send:NAK:dump") {
+		c.log("control:send:NAK:dump", func() string { return p.Dump() })
+	}
+	if c.logEnabled("control:send:NAK:cif") {
+		c.log("control:send:NAK:cif", func() string { return cif.String() })
+	}
 
 	c.statisticsLock.Lock()
 	c.statistics.pktSentNAK++
@@ -1288,8 +1312,12 @@ func (c *srtConn) sendACK(seq circular.Number, lite bool) {
 
 	p.MarshalCIF(&cif)
 
-	c.log("control:send:ACK:dump", func() string { return p.Dump() })
-	c.log("control:send:ACK:cif", func() string { return cif.String() })
+	if c.logEnabled("control:send:ACK:dump") {
+		c.log("control:send:ACK:dump", func() string { return p.Dump() })
+	}
+	if c.logEnabled("control:send:ACK:cif") {
+		c.log("control:send:ACK:cif", func() string { return cif.String() })
+	}
 
 	c.statisticsLock.Lock()
 	c.statistics.pktSentACK++
@@ -1309,7 +1337,9 @@ func (c *srtConn) sendACKACK(ackSequence uint32) {
 
 	p.Header().TypeSpecific = ackSequence
 
-	c.log("control:send:ACKACK:dump", func() string { return p.Dump() })
+	if c.logEnabled("control:send:ACKACK:dump") {
+		c.log("control:send:ACKACK:dump", func() string { return p.Dump() })
+	}
 
 	c.statisticsLock.Lock()
 	c.statistics.pktSentACKACK++
@@ -1444,6 +1474,16 @@ func (c *srtConn) close() {
 
 func (c *srtConn) log(topic string, message func() string) {
 	c.logger.Print(topic, c.socketId, 2, message)
+}
+
+// logEnabled reports whether the given log topic is active. Use this to guard log calls in hot paths
+// so that the message closure is only constructed (and heap-allocated) when logging is actually enabled:
+//
+//	if c.logEnabled(topic) {
+//	    c.log(topic, func() string { ... })
+//	}
+func (c *srtConn) logEnabled(topic string) bool {
+	return c.logger.HasTopic(topic)
 }
 
 func (c *srtConn) SetDeadline(t time.Time) error      { return nil }

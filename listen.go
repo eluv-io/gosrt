@@ -389,7 +389,9 @@ func (ln *listener) reader(ctx context.Context) {
 				break
 			}
 
-			ln.log("packet:recv:dump", func() string { return p.Dump() })
+			if ln.logEnabled("packet:recv:dump") {
+				ln.log("packet:recv:dump", func() string { return p.Dump() })
+			}
 
 			if p.Header().DestinationSocketId == 0 {
 				if p.Header().IsControlPacket && p.Header().ControlType == packet.CTRLTYPE_HANDSHAKE {
@@ -439,7 +441,9 @@ func (ln *listener) send(p packet.Packet) {
 
 	buffer := ln.sndData.Bytes()
 
-	ln.log("packet:send:dump", func() string { return p.Dump() })
+	if ln.logEnabled("packet:send:dump") {
+		ln.log("packet:send:dump", func() string { return p.Dump() })
+	}
 
 	// Write the packet's contents to the wire
 	ln.pc.WriteTo(buffer, p.Header().Addr)
@@ -456,4 +460,14 @@ func (ln *listener) log(topic string, message func() string) {
 	}
 
 	ln.config.Logger.Print(topic, 0, 2, message)
+}
+
+// logEnabled reports whether the given log topic is active. Use this to guard log calls in hot paths
+// so that the message closure is only constructed (and heap-allocated) when logging is actually enabled:
+//
+//	if ln.logEnabled(topic) {
+//	    ln.log(topic, func() string { ... })
+//	}
+func (ln *listener) logEnabled(topic string) bool {
+	return ln.config.Logger != nil && ln.config.Logger.HasTopic(topic)
 }

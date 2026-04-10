@@ -232,7 +232,9 @@ func (dl *dialer) reader(ctx context.Context) {
 				break
 			}
 
-			dl.log("packet:recv:dump", func() string { return p.Dump() })
+			if dl.logEnabled("packet:recv:dump") {
+				dl.log("packet:recv:dump", func() string { return p.Dump() })
+			}
 
 			if p.Header().DestinationSocketId != dl.socketId {
 				break
@@ -270,7 +272,9 @@ func (dl *dialer) send(p packet.Packet) {
 
 	buffer := dl.sndData.Bytes()
 
-	dl.log("packet:send:dump", func() string { return p.Dump() })
+	if dl.logEnabled("packet:send:dump") {
+		dl.log("packet:send:dump", func() string { return p.Dump() })
+	}
 
 	// Write the packet's contents to the wire
 	dl.pc.Write(buffer)
@@ -776,4 +780,14 @@ func (dl *dialer) log(topic string, message func() string) {
 	}
 
 	dl.config.Logger.Print(topic, dl.socketId, 2, message)
+}
+
+// logEnabled reports whether the given log topic is active. Use this to guard log calls in hot paths
+// so that the message closure is only constructed (and heap-allocated) when logging is actually enabled:
+//
+//	if dl.logEnabled(topic) {
+//	    dl.log(topic, func() string { ... })
+//	}
+func (dl *dialer) logEnabled(topic string) bool {
+	return dl.config.Logger != nil && dl.config.Logger.HasTopic(topic)
 }
