@@ -666,6 +666,24 @@ func (dl *dialer) Version() uint32 {
 	return dl.conn.Version()
 }
 
+// closedChan is returned by Done of a dialer without a connection.
+var closedChan = func() chan struct{} {
+	c := make(chan struct{})
+	close(c)
+	return c
+}()
+
+func (dl *dialer) Done() <-chan struct{} {
+	dl.connLock.RLock()
+	defer dl.connLock.RUnlock()
+
+	if dl.conn == nil {
+		return closedChan
+	}
+
+	return dl.conn.Done()
+}
+
 func (dl *dialer) isShutdown() bool {
 	dl.shutdownLock.RLock()
 	defer dl.shutdownLock.RUnlock()

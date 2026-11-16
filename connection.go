@@ -67,6 +67,10 @@ type Conn interface {
 
 	// Version returns the connection version, either 4 or 5. With version 4, the streamid is not available
 	Version() uint32
+
+	// Done returns a channel that is closed once the connection is closed. That happens when either side closes it,
+	// when the peer stays silent for longer than the peer idle timeout, and when its listener is closed.
+	Done() <-chan struct{}
 }
 
 type rtt struct {
@@ -393,6 +397,10 @@ func (c *srtConn) StreamId() string {
 
 func (c *srtConn) Version() uint32 {
 	return c.version
+}
+
+func (c *srtConn) Done() <-chan struct{} {
+	return c.ctx.Done()
 }
 
 // ticker invokes the congestion control in regular intervals with
